@@ -1,0 +1,9 @@
+[package]
+name = "sel4-sddf-netqueue"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+log = "0.4.29"
+sel4-shared-memory = { version = "0.1.0", git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0" }
+zerocopy = { version = "0.8.27", features = ["derive"] }
