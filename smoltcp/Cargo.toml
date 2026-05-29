@@ -1,0 +1,20 @@
+[package]
+name = "sel4-sddf-netqueue-smoltcp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+log = "0.4.29"
+lock_api = "0.4.14"
+one-shot-mutex = "0.2.1"
+sel4-abstract-allocator = { version = "0.1.0", git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0" }
+sel4-abstract-ptr = { version = "0.1.0", git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0" }
+sel4-abstract-rc = { version = "0.1.0", git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0" }
+sel4-shared-memory = { version = "0.1.0", git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0" }
+sel4-sddf-netqueue = { path = ".." }
+
+[dependencies.smoltcp]
+version = "0.11.0"
+default-features = false
+#features = ["proto-ipv4", "proto-dhcpv4", "proto-dns", "socket-dhcpv4", "socket-dns", "socket-tcp", "log"]
+features = ["alloc", "proto-ipv4", "proto-ipv4-fragmentation", "medium-ip", "socket-icmp", "socket-tcp", "log", "verbose"]
