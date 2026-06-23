@@ -3,7 +3,7 @@
 mod descriptor;
 
 pub use descriptor::NetBuffDesc;
-use sel4_shared_memory::{map_field, SharedMemoryRef};
+use sel4_shared_memory::{SharedMemoryRef, map_field};
 
 pub const RING_BUFFER_SIZE: usize = 512;
 pub const NET_BUFFER_SIZE: usize = 2048;
@@ -19,15 +19,15 @@ pub struct RawNetQueue {
 
 pub struct NetQueue<'a> {
     inner: SharedMemoryRef<'a, RawNetQueue>,
-    capacity: u32
+    capacity: u32,
 }
 
 impl<'a> NetQueue<'a> {
-    pub fn new(
-        ptr: SharedMemoryRef<'a, RawNetQueue>,
-        capacity: u32,
-    ) -> Self {
-        Self { inner: ptr , capacity: capacity }
+    pub fn new(ptr: SharedMemoryRef<'a, RawNetQueue>, capacity: u32) -> Self {
+        Self {
+            inner: ptr,
+            capacity: capacity,
+        }
     }
 
     pub fn get_head(&self) -> u16 {
@@ -123,12 +123,12 @@ pub struct NetQueueHandle<'a> {
 }
 
 impl<'a> NetQueueHandle<'a> {
-    pub fn new(
-        free: NetQueue<'a>,
-        active: NetQueue<'a>,
-        capacity: u32,
-    ) -> Self {
-        Self { free, active, capacity }
+    pub fn new(free: NetQueue<'a>, active: NetQueue<'a>, capacity: u32) -> Self {
+        Self {
+            free,
+            active,
+            capacity,
+        }
     }
 
     pub fn from_ptrs(
@@ -145,6 +145,10 @@ impl<'a> NetQueueHandle<'a> {
                 let _ = free.enqueue(desc);
             }
         }
-        Self { free, active, capacity }
+        Self {
+            free,
+            active,
+            capacity,
+        }
     }
 }
