@@ -102,16 +102,17 @@ impl<'a> NetQueue<'a> {
         }
     }
 
-    pub fn dequeue(&mut self, buffer: &mut NetBuffDesc) -> i32 {
+    pub fn dequeue(&mut self) -> Option<NetBuffDesc> {
         if self.is_empty() {
-            return -1;
+            None
         } else {
             let head = self.get_head();
             let index = ((head as u32) % self.capacity) as usize;
             let ptr = self.inner.as_ptr();
-            *buffer = map_field!(ptr.buffers).read()[index];
+            let bufs = map_field!(ptr.buffers).read();
+            let buffer = bufs.get(index)?;
             self.set_head(head + 1);
-            return 0;
+            Some(*buffer)
         }
     }
 }
@@ -142,7 +143,9 @@ impl<'a> NetQueueHandle<'a> {
         if initialize {
             for i in 0..capacity {
                 let desc: NetBuffDesc = NetBuffDesc::new((i as u64) * (NET_BUFFER_SIZE as u64), 0);
-                let _ = free.enqueue(desc);
+                if free.enqueue(desc).is_err() {
+                    panic!("Not enough room to fill free queue");
+                };
             }
         }
         Self {

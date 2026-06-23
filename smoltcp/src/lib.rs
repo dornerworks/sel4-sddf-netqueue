@@ -15,7 +15,7 @@ use smoltcp::phy::{self, Device, DeviceCapabilities};
 use smoltcp::time::Instant;
 
 use sel4_abstract_rc::{AbstractRcT, RcT};
-use sel4_sddf_netqueue::{NetBuffDesc, NetQueueHandle};
+use sel4_sddf_netqueue::NetQueueHandle;
 use sel4_shared_memory::SharedMemoryRef;
 
 pub struct Inner {
@@ -104,12 +104,13 @@ impl<R: RawMutex, P: AbstractRcT> DeviceImpl<R, P> {
     where
         F: FnOnce(&mut [u8]) -> T,
     {
-        let mut desc: NetBuffDesc = NetBuffDesc::new(0, 0);
-        self.inner()
+        let mut desc = self
+            .inner()
             .lock()
             .rx_ring_buffers
             .active
-            .dequeue(&mut desc);
+            .dequeue()
+            .unwrap();
         let start_index = desc.io_or_offset() as usize;
         let end_index: usize = desc.io_or_offset() as usize + desc.len() as usize;
         let mut packet = self
@@ -123,13 +124,21 @@ impl<R: RawMutex, P: AbstractRcT> DeviceImpl<R, P> {
         let result = f(unsafe { packet.as_mut() });
 
         desc.set_len(0);
-        let _ = self.inner().lock().rx_ring_buffers.free.enqueue(desc);
+        if self
+            .inner()
+            .lock()
+            .rx_ring_buffers
+            .free
+            .enqueue(desc)
+            .is_ok()
+        {
+            self.inner().lock().rx_ring_buffers.active.request_signal();
 
-        self.inner().lock().rx_ring_buffers.active.request_signal();
-
-        if self.inner().lock().rx_ring_buffers.free.require_signal() {
-            self.inner().lock().tx_ring_buffers.free.cancel_signal();
+            if self.inner().lock().rx_ring_buffers.free.require_signal() {
+                self.inner().lock().tx_ring_buffers.free.cancel_signal();
+            }
         }
+
         result
     }
 
@@ -137,8 +146,7 @@ impl<R: RawMutex, P: AbstractRcT> DeviceImpl<R, P> {
     where
         F: FnOnce(&mut [u8]) -> T,
     {
-        let mut desc: NetBuffDesc = NetBuffDesc::new(0, 0);
-        self.inner().lock().tx_ring_buffers.free.dequeue(&mut desc);
+        let mut desc = self.inner().lock().tx_ring_buffers.free.dequeue().unwrap();
         let start_index = desc.io_or_offset() as usize;
         let end_index: usize = desc.io_or_offset() as usize + len;
         let mut buf = self
@@ -152,10 +160,18 @@ impl<R: RawMutex, P: AbstractRcT> DeviceImpl<R, P> {
 
         let result = f(unsafe { buf.as_mut() });
 
-        let _ = self.inner().lock().tx_ring_buffers.active.enqueue(desc);
-        if self.inner().lock().tx_ring_buffers.active.require_signal() {
-            self.inner().lock().tx_ring_buffers.active.cancel_signal();
-            self.inner().lock().tx_notify();
+        if self
+            .inner()
+            .lock()
+            .tx_ring_buffers
+            .active
+            .enqueue(desc)
+            .is_ok()
+        {
+            if self.inner().lock().tx_ring_buffers.active.require_signal() {
+                self.inner().lock().tx_ring_buffers.active.cancel_signal();
+                self.inner().lock().tx_notify();
+            }
         }
         result
     }
