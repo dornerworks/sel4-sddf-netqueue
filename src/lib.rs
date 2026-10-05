@@ -3,10 +3,7 @@
 mod descriptor;
 
 pub use descriptor::NetBuffDesc;
-use sel4_shared_memory::{SharedMemoryRef, map_field};
-
-pub const RING_BUFFER_SIZE: usize = 512;
-pub const NET_BUFFER_SIZE: usize = 2048;
+use sel4_shared_memory::{SharedMemoryPtr, SharedMemoryRef, map_field};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -14,7 +11,8 @@ pub struct RawNetQueue {
     pub tail: u16,
     pub head: u16,
     pub consumer_signalled: u32,
-    pub buffers: [NetBuffDesc; RING_BUFFER_SIZE],
+    /* This is actually an array, but we do not know the size at compile time. */
+    pub buffers: NetBuffDesc,
 }
 
 pub struct NetQueue<'a> {
@@ -88,14 +86,22 @@ impl<'a> NetQueue<'a> {
         u32::from(self.length()) == self.capacity
     }
 
+    fn get_mut_buffer(&mut self, index: u16) -> SharedMemoryPtr<'_, NetBuffDesc> {
+        let index = ((index as u32) % self.capacity) as usize;
+        let ptr = self.inner.as_mut_ptr();
+
+        unsafe {
+            map_field!(ptr.buffers)
+                .map(|arr| core::ptr::NonNull::new(arr.as_ptr().add(index)).unwrap())
+        }
+    }
+
     pub fn enqueue(&mut self, buffer: NetBuffDesc) -> Result<(), ()> {
         if self.is_full() {
             Err(())
         } else {
             let tail = self.get_tail();
-            let index = ((tail as u32) % self.capacity) as usize;
-            let ptr = self.inner.as_mut_ptr();
-            let buf = map_field!(ptr.buffers).as_slice().index(index);
+            let buf = self.get_mut_buffer(tail);
             buf.write(buffer);
             self.set_tail(tail + 1);
             Ok(())
@@ -107,12 +113,10 @@ impl<'a> NetQueue<'a> {
             None
         } else {
             let head = self.get_head();
-            let index = ((head as u32) % self.capacity) as usize;
-            let ptr = self.inner.as_ptr();
-            let bufs = map_field!(ptr.buffers).read();
-            let buffer = bufs.get(index)?;
+            let buf = self.get_mut_buffer(head);
+            let buffer = buf.read();
             self.set_head(head + 1);
-            Some(*buffer)
+            Some(buffer)
         }
     }
 }
@@ -136,13 +140,13 @@ impl<'a> NetQueueHandle<'a> {
         free: SharedMemoryRef<'a, RawNetQueue>,
         active: SharedMemoryRef<'a, RawNetQueue>,
         capacity: u32,
-        initialize: bool,
+        buffer_size: Option<u64>,
     ) -> Self {
         let mut free = NetQueue::new(free, capacity);
         let active = NetQueue::new(active, capacity);
-        if initialize {
+        if let Some(size) = buffer_size {
             for i in 0..capacity {
-                let desc: NetBuffDesc = NetBuffDesc::new((i as u64) * (NET_BUFFER_SIZE as u64), 0);
+                let desc: NetBuffDesc = NetBuffDesc::new((i as u64) * size, 0);
                 if free.enqueue(desc).is_err() {
                     panic!("Not enough room to fill free queue");
                 };
